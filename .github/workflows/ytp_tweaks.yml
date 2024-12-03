@@ -136,7 +136,7 @@ jobs:
       - name: Clone YouQuality
         run: |
           cd ${{ github.workspace }}
-          git clone --quiet --depth=1 https://github.com/PoomSmart/YouGroupSettings.git
+          git clone --quiet --depth=1 https://github.com/PoomSmart/YouQuality.git
 
       - name: Clone YTABConfig
         run: |
