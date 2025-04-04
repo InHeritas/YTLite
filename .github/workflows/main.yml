@@ -34,12 +34,6 @@ on:
         required: true
         default: true
 
-      enable_ytncp:
-        description: "Integrate YTNoCommentPreview"
-        type: boolean
-        required: true
-        default: true
-
       ipa_url:
         description: "URL to the decrypted IPA file"
         default: ""
@@ -229,7 +223,6 @@ jobs:
           git clone --quiet --depth=1 --recurse-submodules https://github.com/therealFoxster/DontEatMyContent.git
 
       - name: Clone YTNoCommentPreview
-        if: ${{ inputs.enable_ytncp }}
         run: |
           cd ${{ github.workspace }}
           git clone --quiet --depth=1 --recurse-submodules https://github.com/InHeritas/YTNoCommentPreview.git
@@ -298,7 +291,6 @@ jobs:
           THEOS: ${{ github.workspace }}/theos
 
       - name: Build YTNoCommentPreview
-        if: ${{ inputs.enable_ytncp }}
         run: |
           cd ${{ github.workspace }}/YTNoCommentPreview
           make clean package DEBUG=0 FINALPACKAGE=1
