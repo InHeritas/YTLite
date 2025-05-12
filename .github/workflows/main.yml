@@ -58,11 +58,11 @@ on:
         required: true
         type: string
 
-      info_note:
-        description: "TIP: Learn more about integrations in the README via the link below"
-        default: "https://github.com/dayanch96/YTLite#tweak-integration-details"
+      marketing_version:
+        description: "MARKETING_VERSION"
+        default: ""
         type: string
-        required: false
+        required: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -222,10 +222,10 @@ jobs:
           cd ${{ github.workspace }}
           git clone --quiet --depth=1 --recurse-submodules https://github.com/therealFoxster/DontEatMyContent.git
 
-      - name: Clone YTNoCommentPreview
+      - name: Clone yt-ios-tweaks
         run: |
           cd ${{ github.workspace }}
-          git clone --quiet --depth=1 --recurse-submodules https://github.com/InHeritas/YTNoCommentPreview.git
+          git clone --quiet --depth=1 https://github.com/InHeritas/yt-ios-tweaks.git
 
       - name: Clone Gonerino
         run: |
@@ -295,11 +295,11 @@ jobs:
         env:
           THEOS: ${{ github.workspace }}/theos
 
-      - name: Build YTNoCommentPreview
+      - name: Build yt-ios-tweaks
         run: |
-          cd ${{ github.workspace }}/YTNoCommentPreview
+          cd ${{ github.workspace }}/yt-ios-tweaks
           make clean package DEBUG=0 FINALPACKAGE=1
-          mv packages/*.deb ${{ github.workspace }}/ytncp.deb
+          mv packages/*.deb ${{ github.workspace }}/ytiostweak.deb
         env:
           THEOS: ${{ github.workspace }}/theos
 
@@ -315,7 +315,7 @@ jobs:
         run: |
           tweaks="ytplus.deb OpenYoutubeSafariExtension.appex"
 
-          for deb in youpip.deb ytuhd.deb ryd.deb ygs.deb yq.deb ytvo.deb demc.deb ytncp.deb gonerino.deb; do
+          for deb in youpip.deb ytuhd.deb ryd.deb ygs.deb yq.deb ytvo.deb demc.deb gonerino.deb ytiostweak.deb; do
             if [ -f "$deb" ]; then
               tweaks="$tweaks $deb"
             fi
@@ -327,7 +327,7 @@ jobs:
         uses: softprops/action-gh-release@v2.0.1
         with:
           name: YouTubePlus v${{ inputs.tweak_version }} (${{ github.run_number }})
-          files: YouTubePlus_${{ inputs.tweak_version }}.ipa
+          files: YouTubePlus_${{ inputs.tweak_version }}_${{ inputs.marketing_version }}.ipa
           draft: true
 
       - name: Output Release URL
