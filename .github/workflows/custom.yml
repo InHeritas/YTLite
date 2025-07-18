@@ -1,0 +1,250 @@
+# Workflow name
+name: Create YouTube Plus app
+
+# Workflow trigger: manual run via workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      # --- Basic App Information ---
+      ipa_url:
+        description: "URL to the decrypted IPA file. (Required)"
+        required: true
+        type: string
+      marketing_version:
+        description: "The marketing version of the app (e.g., 19.25.4). (Required)"
+        required: true
+        type: string
+
+      # --- YouTube Plus (YTLite) Tweak Settings ---
+      use_custom_ytplus:
+        description: "Use a custom URL to download the YouTube Plus (YTLite) tweak."
+        default: false
+        required: true
+        type: boolean
+      tweak_url:
+        description: "URL to the custom YouTube Plus tweak file (.deb). Only used if 'use_custom_ytplus' is true."
+        default: ""
+        required: false
+        type: string
+      tweak_version:
+        description: "The version of YTLite to use. If empty, the latest version will be used automatically."
+        default: ""
+        required: false
+        type: string
+
+      # --- App Customization Options ---
+      display_name:
+        description: "Custom App Name (Optional)"
+        default: "YouTube"
+        required: false
+        type: string
+      bundle_id:
+        description: "Custom Bundle ID (Optional)"
+        default: "com.google.ios.youtube"
+        required: false
+        type: string
+
+jobs:
+  build:
+    # Job name
+    name: Build & Release IPA
+    runs-on: macos-latest
+    permissions:
+      contents: write # Required for creating GitHub Releases
+
+    steps:
+      # 1. Checkout source code
+      - name: Checkout Main
+        uses: actions/checkout@v4.1.7
+        with:
+          path: main
+          submodules: recursive
+
+      # 2. Hide sensitive inputs from logs
+      - name: Hide sensitive inputs
+        uses: levibostian/action-hide-sensitive-inputs@v1
+
+      # 3. Validate IPA URL
+      - name: Validate IPA URL
+        run: |
+          echo "Validating IPA URL..."
+          curl -L --fail -r 0-1023 -o sample.part "${{ inputs.ipa_url }}"
+          file_type=$(file --mime-type -b sample.part)
+          echo "Detected file type: $file_type"
+          if [[ "$file_type" != "application/x-ios-app" && "$file_type" != "application/zip" ]]; then
+            echo "::error::Validation failed: The file is not a valid IPA file."
+            exit 1
+          fi
+          echo "IPA URL validation successful."
+
+      # 4. Validate custom tweak URL
+      - name: Validate Tweak URL
+        if: ${{ inputs.use_custom_ytplus }}
+        run: |
+          if [ -z "${{ inputs.tweak_url }}" ]; then
+            echo "::error::Custom tweak URL is required when 'use_custom_ytplus' is true."
+            exit 1
+          fi
+          echo "Validating custom tweak URL..."
+          curl -L --fail -r 0-1023 -o sample.part "${{ inputs.tweak_url }}"
+          file_type=$(file --mime-type -b sample.part)
+          echo "Detected file type: $file_type"
+          if [[ "$file_type" != "application/vnd.debian.binary-package" ]]; then
+            echo "::error::Validation failed: The file is not a valid DEB file."
+            exit 1
+          fi
+          echo "Tweak URL validation successful."
+
+      # 5. Install Dependencies (Homebrew)
+      - name: Install Dependencies
+        run: brew install make ldid jq
+
+      # 6. Set PATH environment variable
+      - name: Set PATH environment variable
+        run: echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
+
+      # 7. Cache Theos
+      - name: Cache Theos
+        id: theos
+        uses: actions/cache@v4
+        with:
+          path: theos/
+          key: theos-cache-v1-${{ runner.os }}
+
+      # 8. Setup Theos & SDK (if cache not found)
+      - name: Setup Theos & SDK
+        if: steps.theos.outputs.cache-hit != 'true'
+        env:
+          THEOS: ${{ github.workspace }}/theos
+        run: |
+          # Clone Theos
+          git clone --recursive --depth=1 https://github.com/theos/theos.git $THEOS
+          # Download iOS SDK (only the necessary SDK via sparse-checkout)
+          git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/
+          cd sdks
+          git sparse-checkout set --no-cone iPhoneOS17.0.sdk
+          git checkout
+          mv *.sdk $THEOS/sdks
+          cd ..
+          rm -rf sdks
+
+      # 9. Install cyan (IPA patching tool)
+      - name: Install cyan
+        run: pipx install --force https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
+
+      # 10. Determine YTLite Version
+      - name: Determine YTLite Version
+        id: ytlite_version
+        run: |
+          if [ -n "${{ inputs.tweak_version }}" ]; then
+            echo "Using specified version: ${{ inputs.tweak_version }}"
+            echo "version=${{ inputs.tweak_version }}" >> $GITHUB_OUTPUT
+          else
+            echo "Fetching the latest YTLite version..."
+            latest_version=$(curl -sL "https://api.github.com/repos/dayanch96/YTLite/releases/latest" | jq -r .tag_name | sed 's/v//')
+            if [ -z "$latest_version" ] || [ "$latest_version" == "null" ]; then
+              echo "::error::Failed to fetch the latest version."
+              exit 1
+            fi
+            echo "Latest version found: $latest_version"
+            echo "version=$latest_version" >> $GITHUB_OUTPUT
+          fi
+      
+      # 11. Download YouTube Plus (YTLite)
+      - name: Download YouTube Plus
+        run: |
+          if [ "${{ inputs.use_custom_ytplus }}" == "true" ]; then
+            echo "Downloading from custom URL: ${{ inputs.tweak_url }}"
+            wget "${{ inputs.tweak_url }}" --no-verbose -O ${{ github.workspace }}/ytplus.deb
+          else
+            version="${{ steps.ytlite_version.outputs.version }}"
+            deb_url="https://github.com/dayanch96/YTLite/releases/download/v${version}/com.dvntm.ytlite_${version}_iphoneos-arm.deb"
+            echo "Downloading from GitHub Releases: $deb_url"
+            wget "$deb_url" --no-verbose -O ${{ github.workspace }}/ytplus.deb
+          fi
+
+      # 12. Download YouTube IPA
+      - name: Download YouTube IPA
+        run: wget "${{ inputs.ipa_url }}" --no-verbose -O ${{ github.workspace }}/youtube.ipa
+
+      # 13. Clone additional tweaks and headers
+      - name: Clone Headers and Tweaks
+        env:
+          THEOS: ${{ github.workspace }}/theos
+        run: |
+          # Clone headers
+          git clone --quiet --depth=1 https://github.com/PoomSmart/YouTubeHeader.git $THEOS/include/YouTubeHeader
+          git clone --quiet --depth=1 https://github.com/PoomSmart/PSHeader.git $THEOS/include/PSHeader
+
+          # Clone Safari extension
+          git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/CokePokes/YoutubeExtensions/
+          cd YoutubeExtensions
+          git sparse-checkout set --no-cone OpenYoutubeSafariExtension.appex
+          git checkout
+          mv *.appex ${{ github.workspace }}
+          cd ..
+
+          # Clone all tweaks (unconditionally)
+          git clone --quiet --depth=1 https://github.com/PoomSmart/YouPiP.git
+          git clone --quiet --depth=1 https://github.com/PoomSmart/YTUHD.git
+          git clone --quiet --depth=1 https://github.com/PoomSmart/Return-YouTube-Dislikes.git
+          git clone --quiet --depth=1 https://github.com/PoomSmart/YouGroupSettings.git
+          git clone --quiet --depth=1 https://github.com/PoomSmart/YouQuality.git
+          git clone --quiet --depth=1 https://github.com/PoomSmart/YTVideoOverlay.git
+          git clone --quiet --depth=1 --recurse-submodules https://github.com/therealFoxster/DontEatMyContent.git
+          git clone --quiet --depth=1 https://github.com/InHeritas/yt-ios-tweaks.git
+          git clone --quiet --depth=1 https://github.com/castdrian/Gonerino.git
+          
+      # 14. Build Tweaks
+      - name: Build Tweaks
+        env:
+          THEOS: ${{ github.workspace }}/theos
+        run: |
+          build_tweak() {
+            if [ -d "$1" ]; then
+              echo "Building $1..."
+              cd "$1"
+              make clean package DEBUG=0 FINALPACKAGE=1
+              mv packages/*.deb ${{ github.workspace }}/$2
+              cd ..
+            fi
+          }
+          build_tweak "YouPiP" "youpip.deb"
+          build_tweak "YTUHD" "ytuhd.deb"
+          build_tweak "Return-YouTube-Dislikes" "ryd.deb"
+          build_tweak "YouGroupSettings" "ygs.deb"
+          build_tweak "YouQuality" "yq.deb"
+          build_tweak "YTVideoOverlay" "ytvo.deb"
+          build_tweak "DontEatMyContent" "demc.deb"
+          build_tweak "yt-ios-tweaks" "ytiostweak.deb"
+          build_tweak "Gonerino" "gonerino.deb"
+
+      # 15. Inject Tweaks into IPA
+      - name: Inject Tweaks into IPA
+        id: ipa_name
+        run: |
+          tweaks_to_inject="ytplus.deb OpenYoutubeSafariExtension.appex"
+          for deb in youpip.deb ytuhd.deb ryd.deb ygs.deb yq.deb ytvo.deb demc.deb ytiostweak.deb gonerino.deb; do
+            if [ -f "$deb" ]; then
+              tweaks_to_inject="$tweaks_to_inject $deb"
+            fi
+          done
+          
+          final_ipa_name="YouTubePlus_${{ steps.ytlite_version.outputs.version }}_${{ inputs.marketing_version }}.ipa"
+          echo "Final IPA name: $final_ipa_name"
+          echo "name=$final_ipa_name" >> $GITHUB_OUTPUT
+
+          cyan -i youtube.ipa -o "$final_ipa_name" -uwef $tweaks_to_inject -n "${{ inputs.display_name }}" -b "${{ inputs.bundle_id }}"
+
+      # 16. Upload to GitHub Releases
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v2.0.6
+        with:
+          name: YouTubePlus v${{ steps.ytlite_version.outputs.version }} (Build #${{ github.run_number }})
+          files: ${{ steps.ipa_name.outputs.name }}
+          draft: true # Create release as a draft
+
+      # 17. Output Release URL
+      - name: Output Release URL
+        run: |
+          echo "::notice title=Release Created!::Release draft is available at: https://github.com/${{ github.repository }}/releases"
