@@ -119,14 +119,24 @@ jobs:
         run: |
           # Clone Theos
           git clone --recursive --depth=1 https://github.com/theos/theos.git $THEOS
-          # Download iOS SDK (only the necessary SDK via sparse-checkout)
-          git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/
-          cd sdks
+          
+          # Download iOS SDK using sparse checkout
+          echo "Downloading iOS SDK..."
+          git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/ temp_sdks
+          cd temp_sdks
           git sparse-checkout set --no-cone iPhoneOS17.0.sdk
           git checkout
-          mv *.sdk $THEOS/sdks
+          
+          # Ensure the target SDK directory exists within theos
+          mkdir -p $THEOS/sdks
+          
+          # Move the specific SDK directory to the theos directory
+          echo "Moving SDK to $THEOS/sdks/"
+          mv iPhoneOS17.0.sdk $THEOS/sdks/
+          
+          # Clean up the temporary clone directory
           cd ..
-          rm -rf sdks
+          rm -rf temp_sdks
 
       # 9. Install cyan (IPA patching tool)
       - name: Install cyan
