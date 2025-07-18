@@ -1,5 +1,5 @@
 # Workflow name
-name: Create YouTube Plus app
+name: '[CUSTOM] Create YouTube Plus app'
 
 # Workflow trigger: manual run via workflow_dispatch
 on:
