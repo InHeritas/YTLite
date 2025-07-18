@@ -107,42 +107,41 @@ jobs:
       - name: Cache Theos
         id: theos
         uses: actions/cache@v4
+        env:
+          cache-name: theos_cache_67db2ab
         with:
           path: theos/
-          key: theos-cache-v1-${{ runner.os }}
+          key: ${{ env.cache-name }}
+          restore-keys: ${{ env.cache-name }}
 
-      # 8. Setup Theos & SDK (if cache not found)
-      - name: Setup Theos & SDK
+      # 8. Setup Theos
+      - name: Setup Theos
+        if: steps.theos.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4.1.7
+        with:
+          repository: theos/theos
+          ref: 67db2ab8d950910161730de77c322658ea3e6b44
+          path: ${{ github.workspace }}/theos
+          submodules: recursive
+
+      # 9. Download iOS SDK
+      - name: Download iOS SDK
         if: steps.theos.outputs.cache-hit != 'true'
         env:
           THEOS: ${{ github.workspace }}/theos
         run: |
-          # Clone Theos
-          git clone --recursive --depth=1 https://github.com/theos/theos.git $THEOS
-          
-          # Download iOS SDK using sparse checkout
-          echo "Downloading iOS SDK..."
-          git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/ temp_sdks
-          cd temp_sdks
-          git sparse-checkout set --no-cone iPhoneOS17.0.sdk
+          git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/
+          cd sdks
+          git sparse-checkout set --no-cone iPhoneOS16.5.sdk
           git checkout
-          
-          # Ensure the target SDK directory exists within theos
           mkdir -p $THEOS/sdks
-          
-          # Move the specific SDK directory to the theos directory
-          echo "Moving SDK to $THEOS/sdks/"
-          mv iPhoneOS17.0.sdk $THEOS/sdks/
-          
-          # Clean up the temporary clone directory
-          cd ..
-          rm -rf temp_sdks
+          mv *.sdk $THEOS/sdks
 
-      # 9. Install cyan (IPA patching tool)
+      # 10. Install cyan (IPA patching tool)
       - name: Install cyan
         run: pipx install --force https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
 
-      # 10. Determine YTLite Version
+      # 11. Determine YTLite Version
       - name: Determine YTLite Version
         id: ytlite_version
         run: |
@@ -160,7 +159,7 @@ jobs:
             echo "version=$latest_version" >> $GITHUB_OUTPUT
           fi
       
-      # 11. Download YouTube Plus (YTLite)
+      # 12. Download YouTube Plus (YTLite)
       - name: Download YouTube Plus
         run: |
           if [ "${{ inputs.use_custom_ytplus }}" == "true" ]; then
@@ -173,11 +172,11 @@ jobs:
             wget "$deb_url" --no-verbose -O ${{ github.workspace }}/ytplus.deb
           fi
 
-      # 12. Download YouTube IPA
+      # 13. Download YouTube IPA
       - name: Download YouTube IPA
         run: wget "${{ inputs.ipa_url }}" --no-verbose -O ${{ github.workspace }}/youtube.ipa
 
-      # 13. Clone additional tweaks and headers
+      # 14. Clone additional tweaks and headers
       - name: Clone Headers and Tweaks
         env:
           THEOS: ${{ github.workspace }}/theos
@@ -205,7 +204,7 @@ jobs:
           git clone --quiet --depth=1 https://github.com/InHeritas/yt-ios-tweaks.git
           git clone --quiet --depth=1 https://github.com/castdrian/Gonerino.git
           
-      # 14. Build Tweaks
+      # 15. Build Tweaks
       - name: Build Tweaks
         env:
           THEOS: ${{ github.workspace }}/theos
@@ -229,7 +228,7 @@ jobs:
           build_tweak "yt-ios-tweaks" "ytiostweak.deb"
           build_tweak "Gonerino" "gonerino.deb"
 
-      # 15. Inject Tweaks into IPA
+      # 16. Inject Tweaks into IPA
       - name: Inject Tweaks into IPA
         id: ipa_name
         run: |
@@ -246,7 +245,7 @@ jobs:
 
           cyan -i youtube.ipa -o "$final_ipa_name" -uwef $tweaks_to_inject -n "${{ inputs.display_name }}" -b "${{ inputs.bundle_id }}"
 
-      # 16. Upload to GitHub Releases
+      # 17. Upload to GitHub Releases
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v2.0.6
         with:
@@ -254,7 +253,7 @@ jobs:
           files: ${{ steps.ipa_name.outputs.name }}
           draft: true # Create release as a draft
 
-      # 17. Output Release URL
+      # 18. Output Release URL
       - name: Output Release URL
         run: |
           echo "::notice title=Release Created!::Release draft is available at: https://github.com/${{ github.repository }}/releases"
