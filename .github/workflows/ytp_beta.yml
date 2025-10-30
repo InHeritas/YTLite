@@ -229,11 +229,16 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           git clone --quiet --depth=1 --recurse-submodules https://github.com/therealFoxster/DontEatMyContent.git
-          
-      - name: Clone YTNoCommentPreview
+
+      - name: Clone yt-ios-tweaks
         run: |
           cd ${{ github.workspace }}
-          git clone --quiet --depth=1 --recurse-submodules https://github.com/InHeritas/YTNoCommentPreview.git
+          git clone --quiet --depth=1 https://github.com/InHeritas/yt-ios-tweaks.git
+
+      - name: Clone Gonerino
+        run: |
+          cd ${{ github.workspace }}
+          git clone --quiet --depth=1 https://github.com/castdrian/Gonerino.git
 
       - name: Build YouPiP
         if: ${{ inputs.enable_youpip }}
@@ -297,12 +302,20 @@ jobs:
           mv packages/*.deb ${{ github.workspace }}/demc.deb
         env:
           THEOS: ${{ github.workspace }}/theos
-          
-      - name: Build YTNoCommentPreview
+
+      - name: Build yt-ios-tweaks
         run: |
-          cd ${{ github.workspace }}/YTNoCommentPreview
+          cd ${{ github.workspace }}/yt-ios-tweaks
           make clean package DEBUG=0 FINALPACKAGE=1
-          mv packages/*.deb ${{ github.workspace }}/ytncp.deb
+          mv packages/*.deb ${{ github.workspace }}/ytiostweak.deb
+        env:
+          THEOS: ${{ github.workspace }}/theos
+
+      - name: Build Gonerino
+        run: |
+          cd ${{ github.workspace }}/Gonerino
+          make clean package DEBUG=0 FINALPACKAGE=1
+          mv packages/*.deb ${{ github.workspace }}/gonerino.deb
         env:
           THEOS: ${{ github.workspace }}/theos
 
@@ -310,7 +323,7 @@ jobs:
         run: |
           tweaks="ytplus.deb OpenYoutubeSafariExtension.appex"
 
-          for deb in youpip.deb ytuhd.deb ryd.deb ygs.deb yq.deb ytvo.deb demc.deb ytncp.deb; do
+          for deb in youpip.deb ytuhd.deb ryd.deb ygs.deb yq.deb ytvo.deb demc.deb ytiostweak.deb gonerino.deb; do
             if [ -f "$deb" ]; then
               tweaks="$tweaks $deb"
             fi
